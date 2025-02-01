@@ -10,48 +10,47 @@ app.get('/', (req, res) => {
 });
 
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json()); // Add this to parse JSON request bodies
 
 const Users = [];
 
+// POST /api/users to create a new user
 app.post('/api/users', (req, res) => {
   const username = req.body.username;
 
   if (!username) {
-    return res.status(400).json({ err: "Username required" });
+    return res.status(400).json({ error: "Username required" });
   }
 
   const _id = Date.now().toString();
 
-  // Use push to add a user to the Users array
-  Users.push({ _id, username, log: [] }); // Add log array for each user
+  // Add a user to the Users array
+  Users.push({ _id, username, log: [] });
 
-  res.status(201).json({ 'username': username, 'id': _id });
+  res.status(201).json({ username, _id }); // Return username and _id as required
 });
 
+// GET /api/users to get a list of all users
 app.get('/api/users', (req, res) => {
-  res.json(Users);
+  const usersList = Users.map(user => ({ username: user.username, _id: user._id })); // Return only username and _id
+  res.json(usersList);
 });
 
+// POST /api/users/:_id/exercises to add an exercise
 app.post('/api/users/:_id/exercises', (req, res) => {
   const _id = req.params._id;
-  const description = req.body.description;
-  const duration = req.body.duration;
-  let date = req.body.date;
+  const { description, duration, date } = req.body;
 
   if (!_id) {
-    return res.status(401).json('_id is required!');
+    return res.status(400).json({ error: '_id is required!' });
   }
 
   if (!description) {
-    return res.status(401).json('Description is required!');
+    return res.status(400).json({ error: 'Description is required!' });
   }
 
-  if (!duration) {
-    return res.status(401).json('Duration is required!');
-  }
-
-  if (!date) {
-    date = new Date().toDateString();
+  if (!duration || isNaN(duration)) {
+    return res.status(400).json({ error: 'Duration must be a number!' });
   }
 
   const user = Users.find(u => u._id === _id);
@@ -59,17 +58,26 @@ app.post('/api/users/:_id/exercises', (req, res) => {
     return res.status(404).json({ error: 'User not found!' });
   }
 
-  user.log.push({ description, duration, date });
+  const exerciseDate = date ? new Date(date).toDateString() : new Date().toDateString();
+
+  const exercise = {
+    description,
+    duration: parseInt(duration), // Ensure duration is a number
+    date: exerciseDate,
+  };
+
+  user.log.push(exercise);
 
   res.status(201).json({
-    '_id': _id,
-    'username': user.username,
-    'date': date,
-    'duration': duration,
-    'description': description,
+    _id: user._id,
+    username: user.username,
+    date: exerciseDate,
+    duration: parseInt(duration),
+    description,
   });
 });
 
+// GET /api/users/:_id/logs to retrieve exercise logs
 app.get('/api/users/:_id/logs', (req, res) => {
   const _id = req.params._id;
   const { from, to, limit } = req.query;
@@ -82,22 +90,28 @@ app.get('/api/users/:_id/logs', (req, res) => {
   let logs = user.log;
 
   if (from) {
-    logs = logs.filter(log => new Date(log.date) >= new Date(from));
+    const fromDate = new Date(from);
+    logs = logs.filter(log => new Date(log.date) >= fromDate);
   }
 
   if (to) {
-    logs = logs.filter(log => new Date(log.date) <= new Date(to));
+    const toDate = new Date(to);
+    logs = logs.filter(log => new Date(log.date) <= toDate);
   }
 
   if (limit) {
-    logs = logs.slice(0, limit);
+    logs = logs.slice(0, parseInt(limit));
   }
 
   const logsResponse = {
     username: user.username,
     count: logs.length,
     _id: user._id,
-    log: logs,
+    log: logs.map(log => ({
+      description: log.description,
+      duration: log.duration,
+      date: log.date,
+    })),
   };
 
   res.json(logsResponse);
